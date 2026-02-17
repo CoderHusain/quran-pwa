@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
+import VisibilityIcon from '@mui/icons-material/Visibility'
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
 import { supabase } from './supabase'
 import './App.css'
 
 function EyeToggle({ shown, onToggle }) {
   return (
     <button type="button" className="eye-btn" onClick={onToggle} aria-label={shown ? 'Hide password' : 'Show password'}>
-      {shown ? '🙈' : '👁️'}
+      {shown ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
     </button>
   )
 }

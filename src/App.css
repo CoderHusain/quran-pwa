@@ -70,13 +70,20 @@ input {
 
 .eye-btn {
   position: absolute;
-  right: 8px;
+  right: 10px;
   top: 50%;
-  transform: translateY(-35%);
+  transform: translateY(-50%);
   background: transparent;
   border: 0;
+  color: #475569;
   padding: 0;
   cursor: pointer;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
 }
 
 .row {
@@ -172,6 +179,10 @@ td {
 
   button {
     width: 100%;
+  }
+
+  .eye-btn {
+    width: 24px;
   }
 
   .row-links .link-btn {
