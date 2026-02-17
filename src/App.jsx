@@ -2,23 +2,20 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
 import './App.css'
 
-function itsToEmail(its) {
-  const clean = String(its || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]/g, '')
-  return `${clean}@its.local`
-}
-
 function App() {
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
+  const [authView, setAuthView] = useState('signin')
 
   const [fullName, setFullName] = useState('')
   const [its, setIts] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
 
   const [loading, setLoading] = useState(false)
+  const [authError, setAuthError] = useState('')
+  const [authInfo, setAuthInfo] = useState('')
+
   const [logs, setLogs] = useState([])
   const [adminLogs, setAdminLogs] = useState([])
 
@@ -71,19 +68,18 @@ function App() {
   }
 
   async function signUp() {
-    const cleanIts = String(its).trim().toLowerCase()
-    if (!cleanIts || !password || !fullName.trim()) {
-      setStatus('Please enter full name, ITS, and password.')
+    setAuthError('')
+    setAuthInfo('')
+
+    const cleanIts = String(its).trim()
+    if (!fullName.trim() || !cleanIts || !email.trim() || !password) {
+      setAuthError('Please enter Full Name, ITS, email, and password.')
       return
     }
 
-    const email = itsToEmail(cleanIts)
-
     setLoading(true)
-    setStatus('Creating account...')
-
-    const { error: signUpError } = await supabase.auth.signUp({
-      email,
+    const { error } = await supabase.auth.signUp({
+      email: email.trim().toLowerCase(),
       password,
       options: {
         data: {
@@ -92,18 +88,52 @@ function App() {
         },
       },
     })
+    setLoading(false)
 
-    if (signUpError) {
-      setLoading(false)
-      setStatus(signUpError.message)
+    if (error) {
+      setAuthError(error.message)
       return
     }
 
-    // Try immediate sign-in (works when email confirmation is disabled)
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+    setAuthInfo('A confirmation email has been sent to you. Please confirm your email, then sign in using ITS and password.')
+    setAuthView('signin')
+    setPassword('')
+  }
+
+  async function signIn() {
+    setAuthError('')
+    setAuthInfo('')
+
+    const cleanIts = String(its).trim()
+    if (!cleanIts || !password) {
+      setAuthError('Please enter ITS and password.')
+      return
+    }
+
+    setLoading(true)
+
+    const { data: lookup, error: lookupError } = await supabase.rpc('get_email_by_its', {
+      p_its: cleanIts,
+    })
+
+    if (lookupError || !lookup) {
+      setLoading(false)
+      setAuthError('Invalid ITS or password.')
+      return
+    }
+
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: lookup,
+      password,
+    })
+
     if (signInError) {
       setLoading(false)
-      setStatus('Account created. If email confirmation is enabled, confirm then sign in.')
+      setAuthError(
+        signInError.message.toLowerCase().includes('email not confirmed')
+          ? 'Please confirm your email first, then sign in.'
+          : 'Invalid ITS or password.',
+      )
       return
     }
 
@@ -111,26 +141,14 @@ function App() {
       data: { user },
     } = await supabase.auth.getUser()
 
-    if (user?.id) {
-      await supabase.from('profiles').upsert({
-        id: user.id,
-        full_name: fullName.trim(),
-        its: cleanIts,
-      })
+    if (!user?.email_confirmed_at) {
+      await supabase.auth.signOut()
+      setLoading(false)
+      setAuthError('Please confirm your email first, then sign in.')
+      return
     }
 
     setLoading(false)
-    setStatus('Account created and signed in ✅')
-  }
-
-  async function signIn() {
-    const cleanIts = String(its).trim().toLowerCase()
-    const email = itsToEmail(cleanIts)
-    setLoading(true)
-    setStatus('Signing in...')
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    setLoading(false)
-    setStatus(error ? error.message : 'Signed in successfully.')
   }
 
   async function signOut() {
@@ -226,26 +244,60 @@ function App() {
     return (
       <main className="container">
         <h1>Quran Read Tracker</h1>
-        <p>Sign up using Full Name + ITS + Password.</p>
-        <section className="card">
-          <h2>Sign in / Sign up</h2>
-          <label>Full Name (for signup)</label>
-          <input value={fullName} onChange={(e) => setFullName(e.target.value)} type="text" />
 
-          <label>ITS</label>
-          <input value={its} onChange={(e) => setIts(e.target.value)} type="text" placeholder="e.g. 12345678" />
+        {authView === 'signin' ? (
+          <section className="card">
+            <h2>Sign in</h2>
+            <label>ITS</label>
+            <input value={its} onChange={(e) => setIts(e.target.value)} type="text" placeholder="Ex: 40239713" />
 
-          <label>Password</label>
-          <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" />
+            <label>Password</label>
+            <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" />
 
-          <div className="row">
-            <button disabled={loading} onClick={signIn}>Sign In</button>
-            <button disabled={loading} onClick={signUp} className="secondary">Sign Up</button>
-          </div>
+            <div className="row">
+              <button disabled={loading} onClick={signIn}>Sign In</button>
+            </div>
 
-          <small>ITS login is implemented via internal mapped email (ITS@its.local).</small>
-          <small>{status}</small>
-        </section>
+            {authError ? <p className="error-text">{authError}</p> : null}
+            {authInfo ? <p className="success-text">{authInfo}</p> : null}
+
+            <p className="muted auth-switch">
+              Don&apos;t have an account?{' '}
+              <button className="link-btn" type="button" onClick={() => { setAuthView('signup'); setAuthError(''); setAuthInfo('') }}>
+                Go to Sign up
+              </button>
+            </p>
+          </section>
+        ) : (
+          <section className="card">
+            <h2>Sign up</h2>
+            <label>Full Name</label>
+            <input value={fullName} onChange={(e) => setFullName(e.target.value)} type="text" />
+
+            <label>ITS</label>
+            <input value={its} onChange={(e) => setIts(e.target.value)} type="text" placeholder="Ex: 40239713" />
+
+            <label>Email</label>
+            <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="you@example.com" />
+
+            <label>Password</label>
+            <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" />
+
+            <div className="row">
+              <button disabled={loading} onClick={signUp}>Create account</button>
+            </div>
+
+            {authError ? <p className="error-text">{authError}</p> : null}
+            {authInfo ? <p className="success-text">{authInfo}</p> : null}
+
+            <p className="muted auth-switch">
+              Already have an account?{' '}
+              <button className="link-btn" type="button" onClick={() => { setAuthView('signin'); setAuthError(''); setAuthInfo('') }}>
+                Go to Sign in
+              </button>
+            </p>
+          </section>
+        )}
       </main>
     )
   }
@@ -346,6 +398,7 @@ function App() {
                     <th>When</th>
                     <th>Full Name</th>
                     <th>ITS</th>
+                    <th>Email</th>
                     <th>Juz</th>
                     <th>Surah</th>
                     <th>Lat</th>
@@ -358,6 +411,7 @@ function App() {
                       <td>{new Date(log.read_at).toLocaleString()}</td>
                       <td>{log.full_name ?? '-'}</td>
                       <td>{log.its ?? '-'}</td>
+                      <td>{log.email ?? '-'}</td>
                       <td>{log.juz_number}</td>
                       <td>{log.surah_number ?? '-'}</td>
                       <td>{log.lat ? Number(log.lat).toFixed(4) : '-'}</td>
@@ -368,7 +422,7 @@ function App() {
               </table>
             </div>
           )}
-          <small>To make a user admin: set profiles.is_admin = true in Supabase for that user.</small>
+          <small>Superadmin access is controlled by profiles.is_admin = true.</small>
         </section>
       )}
     </main>

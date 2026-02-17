@@ -4,6 +4,7 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text,
   its text unique,
+  email text unique,
   is_admin boolean not null default false,
   created_at timestamptz default now()
 );
@@ -35,6 +36,22 @@ as $$
   );
 $$;
 
+-- ITS -> email lookup for sign-in flow (anonymous allowed)
+create or replace function public.get_email_by_its(p_its text)
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select p.email
+  from public.profiles p
+  where lower(p.its) = lower(trim(p_its))
+  limit 1;
+$$;
+
+grant execute on function public.get_email_by_its(text) to anon, authenticated;
+
 -- profile policies
 create policy if not exists profiles_select_own on public.profiles
 for select using (auth.uid() = id);
@@ -58,7 +75,7 @@ for select using (public.is_admin(auth.uid()));
 create policy if not exists read_logs_insert_own on public.read_logs
 for insert with check (auth.uid() = user_id);
 
--- Optional: create profile row after signup
+-- Create/update profile row after signup
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -66,15 +83,17 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, full_name, its)
+  insert into public.profiles (id, full_name, its, email)
   values (
     new.id,
     coalesce(new.raw_user_meta_data->>'full_name', null),
-    coalesce(lower(new.raw_user_meta_data->>'its'), null)
+    coalesce(lower(new.raw_user_meta_data->>'its'), null),
+    lower(new.email)
   )
   on conflict (id) do update
     set full_name = excluded.full_name,
-        its = excluded.its;
+        its = excluded.its,
+        email = excluded.email;
   return new;
 end;
 $$;
@@ -91,6 +110,7 @@ returns table (
   user_id uuid,
   full_name text,
   its text,
+  email text,
   juz_number int,
   surah_number int,
   read_at timestamptz,
@@ -108,6 +128,7 @@ as $$
     rl.user_id,
     p.full_name,
     p.its,
+    p.email,
     rl.juz_number,
     rl.surah_number,
     rl.read_at,

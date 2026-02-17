@@ -2,9 +2,8 @@
 
 Tracks:
 - Which **Juz/Surah** was read
-- **Who** read it (Full Name + ITS)
+- **Who** read it (Full Name + ITS + email)
 - **Where** it was read (optional geolocation)
-- How many times each Juz was logged
 - Admin dashboard: **which Juz was read by whom** across all users
 
 ## 1) Setup
@@ -23,21 +22,26 @@ Add your Supabase values in `.env`:
 
 Run `supabase-schema.sql` in Supabase SQL Editor.
 
-## 3) Auth mode (ITS + password)
+## 3) Auth flow
 
-Supabase email/password auth is used under the hood.
-This app maps ITS to an internal email format:
-
-`ITS@its.local`
-
-So users sign in with:
-- ITS
-- Password
-
-And during signup they provide:
+### Sign up page (separate UI page)
+Fields required:
 - Full Name
 - ITS
+- Email
 - Password
+
+After signup, user is redirected to Sign in page and shown:
+- "A confirmation email has been sent to you. Please confirm your email."
+
+### Sign in page
+Fields required:
+- ITS (placeholder: Ex: 40239713)
+- Password
+
+The app resolves ITS -> email internally and signs in using Supabase email/password auth.
+If credentials are invalid, error is shown in **red** below the form.
+If email is not confirmed, user is blocked from entering Juz and shown confirmation message.
 
 ## 4) Run locally
 
@@ -52,10 +56,22 @@ npm run build
 npm run preview
 ```
 
-## Admin dashboard
+## Superadmin / Admin dashboard
 
-Admin users can view all logs in-app.
-To make someone admin, set `profiles.is_admin = true` for that user's row in Supabase.
+Admin users can view all users' logs in-app.
+
+To make your account superadmin:
+
+1. Sign up and confirm email
+2. In Supabase SQL Editor run:
+
+```sql
+update public.profiles
+set is_admin = true
+where its = 'YOUR_ITS_HERE';
+```
+
+3. Sign in again → Admin dashboard appears
 
 ## Deploy (Vercel)
 
@@ -79,9 +95,3 @@ To make someone admin, set `profiles.is_admin = true` for that user's row in Sup
 5. Deploy
 
 `netlify.toml` is included for SPA redirects.
-
-## Notes
-
-- PWA is enabled with `vite-plugin-pwa`.
-- Location is captured only after user permission.
-- RLS + admin checks protect data access.

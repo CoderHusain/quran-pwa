@@ -75,6 +75,36 @@ small {
   color: #334155;
 }
 
+.error-text {
+  color: #dc2626;
+  margin-top: 10px;
+  margin-bottom: 0;
+  font-weight: 600;
+}
+
+.success-text {
+  color: #16a34a;
+  margin-top: 10px;
+  margin-bottom: 0;
+  font-weight: 600;
+}
+
+.auth-switch {
+  margin-top: 10px;
+}
+
+.link-btn {
+  background: transparent;
+  color: #0ea5e9;
+  padding: 0;
+  border: 0;
+  text-decoration: underline;
+}
+
+.link-btn:hover {
+  opacity: 0.8;
+}
+
 .muted {
   color: #64748b;
 }
