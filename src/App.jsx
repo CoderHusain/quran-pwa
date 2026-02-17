@@ -1,38 +1,46 @@
 import { useEffect, useMemo, useState } from 'react'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
+import {
+  Alert,
+  Box,
+  Button,
+  IconButton,
+  InputAdornment,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material'
 import { supabase } from './supabase'
 import './App.css'
 
-function EyeToggle({ shown, onToggle }) {
-  return (
-    <button type="button" className="eye-btn" onClick={onToggle} aria-label={shown ? 'Hide password' : 'Show password'}>
-      {shown ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
-    </button>
-  )
-}
-
 function PasswordField({ label, value, onChange, shown, onToggle, placeholder = '' }) {
   return (
-    <>
-      <label>{label}</label>
-      <div className="password-wrap">
-        <input
-          value={value}
-          onChange={onChange}
-          type={shown ? 'text' : 'password'}
-          placeholder={placeholder}
-        />
-        <EyeToggle shown={shown} onToggle={onToggle} />
-      </div>
-    </>
+    <TextField
+      fullWidth
+      label={label}
+      value={value}
+      onChange={onChange}
+      type={shown ? 'text' : 'password'}
+      placeholder={placeholder}
+      margin="normal"
+      InputProps={{
+        endAdornment: (
+          <InputAdornment position="end">
+            <IconButton onClick={onToggle} edge="end" aria-label={shown ? 'Hide password' : 'Show password'}>
+              {shown ? <VisibilityOffIcon /> : <VisibilityIcon />}
+            </IconButton>
+          </InputAdornment>
+        ),
+      }}
+    />
   )
 }
 
 function App() {
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
-  const [authView, setAuthView] = useState('signin') // signin | signup | forgot | reset
+  const [authView, setAuthView] = useState('signin')
 
   const [fullName, setFullName] = useState('')
   const [its, setIts] = useState('')
@@ -171,10 +179,7 @@ function App() {
       return
     }
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: lookup,
-      password,
-    })
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email: lookup, password })
 
     if (signInError) {
       setLoading(false)
@@ -288,11 +293,7 @@ function App() {
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setLocation({
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-        })
+        setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy })
         setStatus('Location captured.')
       },
       (err) => setStatus(`Location error: ${err.message}`),
@@ -341,24 +342,29 @@ function App() {
 
   const countsByJuz = useMemo(() => {
     const map = new Map()
-    for (const row of logs) {
-      map.set(row.juz_number, (map.get(row.juz_number) ?? 0) + 1)
-    }
+    for (const row of logs) map.set(row.juz_number, (map.get(row.juz_number) ?? 0) + 1)
     return [...map.entries()].sort((a, b) => a[0] - b[0])
   }, [logs])
 
   if (!session) {
     return (
       <main className="container auth-shell">
-        <section className="card auth-card">
-          <h1>Quran Read Tracker</h1>
+        <Box className="card auth-card">
+          <Typography variant="h4" fontWeight={700} gutterBottom>
+            Quran Read Tracker
+          </Typography>
 
           {authView === 'signin' && (
             <>
-              <h2>Sign in</h2>
-              <label>ITS</label>
-              <input value={its} onChange={(e) => setIts(e.target.value)} type="text" placeholder="Ex: 40239713" />
-
+              <Typography variant="h5" fontWeight={700}>Sign in</Typography>
+              <TextField
+                fullWidth
+                label="ITS"
+                value={its}
+                onChange={(e) => setIts(e.target.value)}
+                placeholder="Ex: 40239713"
+                margin="normal"
+              />
               <PasswordField
                 label="Password"
                 value={password}
@@ -367,33 +373,26 @@ function App() {
                 onToggle={() => setShowPassword((v) => !v)}
               />
 
-              <div className="row">
-                <button disabled={loading} onClick={signIn}>Sign In</button>
-              </div>
-
-              <div className="row row-links">
-                <button className="link-btn" type="button" onClick={() => { setAuthView('signup'); setAuthError(''); setAuthInfo('') }}>
-                  Create account
-                </button>
-                <button className="link-btn" type="button" onClick={() => { setAuthView('forgot'); setAuthError(''); setAuthInfo('') }}>
-                  Forgot password?
-                </button>
-              </div>
+              <Stack spacing={1.2} mt={1.5}>
+                <Button variant="contained" onClick={signIn} disabled={loading}>Sign In</Button>
+                <Stack direction="row" justifyContent="space-between" flexWrap="wrap" gap={1}>
+                  <Button variant="text" onClick={() => { setAuthView('signup'); setAuthError(''); setAuthInfo('') }}>
+                    Create account
+                  </Button>
+                  <Button variant="text" onClick={() => { setAuthView('forgot'); setAuthError(''); setAuthInfo('') }}>
+                    Forgot password?
+                  </Button>
+                </Stack>
+              </Stack>
             </>
           )}
 
           {authView === 'signup' && (
             <>
-              <h2>Sign up</h2>
-              <label>Full Name</label>
-              <input value={fullName} onChange={(e) => setFullName(e.target.value)} type="text" />
-
-              <label>ITS</label>
-              <input value={its} onChange={(e) => setIts(e.target.value)} type="text" placeholder="Ex: 40239713" />
-
-              <label>Email</label>
-              <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="you@example.com" />
-
+              <Typography variant="h5" fontWeight={700}>Sign up</Typography>
+              <TextField fullWidth label="Full Name" value={fullName} onChange={(e) => setFullName(e.target.value)} margin="normal" />
+              <TextField fullWidth label="ITS" value={its} onChange={(e) => setIts(e.target.value)} placeholder="Ex: 40239713" margin="normal" />
+              <TextField fullWidth label="Email" value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="you@example.com" margin="normal" />
               <PasswordField
                 label="Password"
                 value={password}
@@ -401,40 +400,39 @@ function App() {
                 shown={showPassword}
                 onToggle={() => setShowPassword((v) => !v)}
               />
-
-              <div className="row">
-                <button disabled={loading} onClick={signUp}>Create account</button>
-              </div>
-
-              <div className="row row-links">
-                <button className="link-btn" type="button" onClick={() => { setAuthView('signin'); setAuthError(''); setAuthInfo('') }}>
+              <Stack spacing={1.2} mt={1.5}>
+                <Button variant="contained" onClick={signUp} disabled={loading}>Create account</Button>
+                <Button variant="text" onClick={() => { setAuthView('signin'); setAuthError(''); setAuthInfo('') }}>
                   Back to Sign in
-                </button>
-              </div>
+                </Button>
+              </Stack>
             </>
           )}
 
           {authView === 'forgot' && (
             <>
-              <h2>Forgot password</h2>
-              <label>Email</label>
-              <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="you@example.com" />
-
-              <div className="row">
-                <button disabled={loading} onClick={requestPasswordReset}>Send reset link</button>
-              </div>
-
-              <div className="row row-links">
-                <button className="link-btn" type="button" onClick={() => { setAuthView('signin'); setAuthError(''); setAuthInfo('') }}>
+              <Typography variant="h5" fontWeight={700}>Forgot password</Typography>
+              <TextField
+                fullWidth
+                label="Email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                type="email"
+                placeholder="you@example.com"
+                margin="normal"
+              />
+              <Stack spacing={1.2} mt={1.5}>
+                <Button variant="contained" onClick={requestPasswordReset} disabled={loading}>Send reset link</Button>
+                <Button variant="text" onClick={() => { setAuthView('signin'); setAuthError(''); setAuthInfo('') }}>
                   Back to Sign in
-                </button>
-              </div>
+                </Button>
+              </Stack>
             </>
           )}
 
           {authView === 'reset' && (
             <>
-              <h2>Reset password</h2>
+              <Typography variant="h5" fontWeight={700}>Reset password</Typography>
               <PasswordField
                 label="New password"
                 value={password}
@@ -442,7 +440,6 @@ function App() {
                 shown={showPassword}
                 onToggle={() => setShowPassword((v) => !v)}
               />
-
               <PasswordField
                 label="Confirm new password"
                 value={confirmPassword}
@@ -450,16 +447,15 @@ function App() {
                 shown={showConfirmPassword}
                 onToggle={() => setShowConfirmPassword((v) => !v)}
               />
-
-              <div className="row">
-                <button disabled={loading} onClick={resetPasswordNow}>Update password</button>
-              </div>
+              <Box mt={1.5}>
+                <Button variant="contained" fullWidth onClick={resetPasswordNow} disabled={loading}>Update password</Button>
+              </Box>
             </>
           )}
 
-          {authError ? <p className="error-text">{authError}</p> : null}
-          {authInfo ? <p className="success-text">{authInfo}</p> : null}
-        </section>
+          {authError ? <Alert severity="error" sx={{ mt: 2 }}>{authError}</Alert> : null}
+          {authInfo ? <Alert severity="success" sx={{ mt: 2 }}>{authInfo}</Alert> : null}
+        </Box>
       </main>
     )
   }
@@ -467,53 +463,50 @@ function App() {
   return (
     <main className="container app-shell">
       <div className="header-row">
-        <h1>Quran Read Tracker</h1>
-        <div className="row">
-          {installPrompt ? <button onClick={installApp}>Install App</button> : null}
-          <button onClick={signOut} className="secondary">Sign out</button>
-        </div>
+        <Typography variant="h4" fontWeight={700}>Quran Read Tracker</Typography>
+        <Stack direction="row" gap={1} flexWrap="wrap">
+          {installPrompt ? <Button variant="contained" onClick={installApp}>Install App</Button> : null}
+          <Button variant="outlined" onClick={signOut}>Sign out</Button>
+        </Stack>
       </div>
-      <p className="muted">
+
+      <Typography className="muted" sx={{ mt: 1 }}>
         Logged in as: <strong>{profile?.full_name || session.user.email}</strong>
         {profile?.its ? ` (ITS: ${profile.its})` : ''}
         {profile?.is_admin ? ' • Admin' : ''}
-      </p>
+      </Typography>
+
       {!installPrompt ? (
-        <small className="muted">
+        <Typography className="muted" sx={{ mt: 1 }}>
           If Install button is not shown: on iPhone use Share → Add to Home Screen. On desktop/Android, browser may show install icon in address bar.
-        </small>
+        </Typography>
       ) : null}
 
-      <section className="card">
-        <h2>Log a reading</h2>
-        <form onSubmit={submitLog}>
-          <label>Juz (1-30)</label>
-          <input type="number" min="1" max="30" value={juz} onChange={(e) => setJuz(e.target.value)} required />
+      <Box className="card">
+        <Typography variant="h5" fontWeight={700}>Log a reading</Typography>
+        <Box component="form" onSubmit={submitLog}>
+          <TextField fullWidth label="Juz (1-30)" type="number" inputProps={{ min: 1, max: 30 }} value={juz} onChange={(e) => setJuz(e.target.value)} margin="normal" required />
+          <TextField fullWidth label="Surah (optional, 1-114)" type="number" inputProps={{ min: 1, max: 114 }} value={surah} onChange={(e) => setSurah(e.target.value)} margin="normal" />
+          <TextField fullWidth label="Read at" type="datetime-local" value={readAt} onChange={(e) => setReadAt(e.target.value)} margin="normal" InputLabelProps={{ shrink: true }} required />
 
-          <label>Surah (optional, 1-114)</label>
-          <input type="number" min="1" max="114" value={surah} onChange={(e) => setSurah(e.target.value)} />
+          <Stack direction={{ xs: 'column', sm: 'row' }} gap={1} mt={2}>
+            <Button variant="outlined" type="button" onClick={useMyLocation}>Use my location</Button>
+            <Button variant="contained" type="submit" disabled={loading}>Save log</Button>
+          </Stack>
 
-          <label>Read at</label>
-          <input type="datetime-local" value={readAt} onChange={(e) => setReadAt(e.target.value)} required />
-
-          <div className="row">
-            <button type="button" onClick={useMyLocation} className="secondary">Use my location</button>
-            <button type="submit" disabled={loading}>Save log</button>
-          </div>
-
-          {location && (
-            <small>
+          {location ? (
+            <Typography sx={{ mt: 1.2 }}>
               Location: {location.lat.toFixed(5)}, {location.lng.toFixed(5)} (±{Math.round(location.accuracy)}m)
-            </small>
-          )}
-          <small>{status}</small>
-        </form>
-      </section>
+            </Typography>
+          ) : null}
+          {status ? <Typography sx={{ mt: 1.2 }}>{status}</Typography> : null}
+        </Box>
+      </Box>
 
-      <section className="card">
-        <h2>Counts by Juz (you)</h2>
+      <Box className="card">
+        <Typography variant="h5" fontWeight={700}>Counts by Juz (you)</Typography>
         {countsByJuz.length === 0 ? (
-          <p className="muted">No logs yet.</p>
+          <Typography className="muted">No logs yet.</Typography>
         ) : (
           <ul>
             {countsByJuz.map(([juzNumber, count]) => (
@@ -521,12 +514,12 @@ function App() {
             ))}
           </ul>
         )}
-      </section>
+      </Box>
 
-      <section className="card">
-        <h2>Recent logs (you)</h2>
+      <Box className="card">
+        <Typography variant="h5" fontWeight={700}>Recent logs (you)</Typography>
         {logs.length === 0 ? (
-          <p className="muted">No logs yet.</p>
+          <Typography className="muted">No logs yet.</Typography>
         ) : (
           <div className="table-wrap">
             <table>
@@ -553,13 +546,13 @@ function App() {
             </table>
           </div>
         )}
-      </section>
+      </Box>
 
       {profile?.is_admin && (
-        <section className="card">
-          <h2>Admin dashboard — all users</h2>
+        <Box className="card">
+          <Typography variant="h5" fontWeight={700}>Admin dashboard — all users</Typography>
           {adminLogs.length === 0 ? (
-            <p className="muted">No logs yet.</p>
+            <Typography className="muted">No logs yet.</Typography>
           ) : (
             <div className="table-wrap">
               <table>
@@ -592,8 +585,8 @@ function App() {
               </table>
             </div>
           )}
-          <small>Superadmin access is controlled by profiles.is_admin = true.</small>
-        </section>
+          <Typography className="muted" sx={{ mt: 1.2 }}>Superadmin access is controlled by profiles.is_admin = true.</Typography>
+        </Box>
       )}
     </main>
   )
