@@ -11,7 +11,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
-import { supabase } from './supabase'
+import { isSupabaseConfigured, supabase } from './supabase'
 import './App.css'
 
 function PasswordField({ label, value, onChange, shown, onToggle, placeholder = '' }) {
@@ -38,6 +38,22 @@ function PasswordField({ label, value, onChange, shown, onToggle, placeholder = 
 }
 
 function App() {
+  if (!isSupabaseConfigured || !supabase) {
+    return (
+      <main className="container auth-shell">
+        <Box className="card auth-card">
+          <Typography variant="h5" fontWeight={700}>App configuration needed</Typography>
+          <Alert severity="error" sx={{ mt: 2 }}>
+            Missing Supabase environment variables on this deployment.
+          </Alert>
+          <Typography sx={{ mt: 2 }}>
+            Please set <strong>VITE_SUPABASE_URL</strong> and <strong>VITE_SUPABASE_ANON_KEY</strong> in Vercel Project Settings → Environment Variables, then redeploy.
+          </Typography>
+        </Box>
+      </main>
+    )
+  }
+
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
   const [authView, setAuthView] = useState('signin')
