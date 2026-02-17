@@ -2,12 +2,25 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
 import './App.css'
 
+function itsToEmail(its) {
+  const clean = String(its || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, '')
+  return `${clean}@its.local`
+}
+
 function App() {
   const [session, setSession] = useState(null)
-  const [email, setEmail] = useState('')
+  const [profile, setProfile] = useState(null)
+
+  const [fullName, setFullName] = useState('')
+  const [its, setIts] = useState('')
   const [password, setPassword] = useState('')
+
   const [loading, setLoading] = useState(false)
   const [logs, setLogs] = useState([])
+  const [adminLogs, setAdminLogs] = useState([])
 
   const [juz, setJuz] = useState(1)
   const [surah, setSurah] = useState('')
@@ -28,19 +41,91 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (session?.user) loadLogs()
-    else setLogs([])
+    if (session?.user) {
+      loadProfile()
+      loadLogs()
+    } else {
+      setProfile(null)
+      setLogs([])
+      setAdminLogs([])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id])
 
+  useEffect(() => {
+    if (profile?.is_admin) loadAdminLogs()
+    else setAdminLogs([])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.is_admin])
+
+  async function loadProfile() {
+    const userId = session?.user?.id
+    if (!userId) return
+
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single()
+    if (error) {
+      setStatus(error.message)
+      return
+    }
+    setProfile(data)
+  }
+
   async function signUp() {
+    const cleanIts = String(its).trim().toLowerCase()
+    if (!cleanIts || !password || !fullName.trim()) {
+      setStatus('Please enter full name, ITS, and password.')
+      return
+    }
+
+    const email = itsToEmail(cleanIts)
+
     setLoading(true)
     setStatus('Creating account...')
-    const { error } = await supabase.auth.signUp({ email, password })
+
+    const { error: signUpError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: fullName.trim(),
+          its: cleanIts,
+        },
+      },
+    })
+
+    if (signUpError) {
+      setLoading(false)
+      setStatus(signUpError.message)
+      return
+    }
+
+    // Try immediate sign-in (works when email confirmation is disabled)
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+    if (signInError) {
+      setLoading(false)
+      setStatus('Account created. If email confirmation is enabled, confirm then sign in.')
+      return
+    }
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (user?.id) {
+      await supabase.from('profiles').upsert({
+        id: user.id,
+        full_name: fullName.trim(),
+        its: cleanIts,
+      })
+    }
+
     setLoading(false)
-    setStatus(error ? error.message : 'Account created. You can now sign in.')
+    setStatus('Account created and signed in ✅')
   }
 
   async function signIn() {
+    const cleanIts = String(its).trim().toLowerCase()
+    const email = itsToEmail(cleanIts)
     setLoading(true)
     setStatus('Signing in...')
     const { error } = await supabase.auth.signInWithPassword({ email, password })
@@ -65,6 +150,15 @@ function App() {
       return
     }
     setLogs(data ?? [])
+  }
+
+  async function loadAdminLogs() {
+    const { data, error } = await supabase.rpc('get_all_read_logs_admin')
+    if (error) {
+      setStatus(error.message)
+      return
+    }
+    setAdminLogs(data ?? [])
   }
 
   async function useMyLocation() {
@@ -117,6 +211,7 @@ function App() {
     setStatus('Read log saved ✅')
     setSurah('')
     await loadLogs()
+    if (profile?.is_admin) await loadAdminLogs()
   }
 
   const countsByJuz = useMemo(() => {
@@ -131,17 +226,24 @@ function App() {
     return (
       <main className="container">
         <h1>Quran Read Tracker</h1>
-        <p>Track which Juz/Surah was read, by whom, and where.</p>
+        <p>Sign up using Full Name + ITS + Password.</p>
         <section className="card">
-          <h2>Sign in</h2>
-          <label>Email</label>
-          <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" />
+          <h2>Sign in / Sign up</h2>
+          <label>Full Name (for signup)</label>
+          <input value={fullName} onChange={(e) => setFullName(e.target.value)} type="text" />
+
+          <label>ITS</label>
+          <input value={its} onChange={(e) => setIts(e.target.value)} type="text" placeholder="e.g. 12345678" />
+
           <label>Password</label>
           <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" />
+
           <div className="row">
             <button disabled={loading} onClick={signIn}>Sign In</button>
             <button disabled={loading} onClick={signUp} className="secondary">Sign Up</button>
           </div>
+
+          <small>ITS login is implemented via internal mapped email (ITS@its.local).</small>
           <small>{status}</small>
         </section>
       </main>
@@ -154,7 +256,11 @@ function App() {
         <h1>Quran Read Tracker</h1>
         <button onClick={signOut} className="secondary">Sign out</button>
       </div>
-      <p className="muted">Logged in as: <strong>{session.user.email}</strong></p>
+      <p className="muted">
+        Logged in as: <strong>{profile?.full_name || session.user.email}</strong>
+        {profile?.its ? ` (ITS: ${profile.its})` : ''}
+        {profile?.is_admin ? ' • Admin' : ''}
+      </p>
 
       <section className="card">
         <h2>Log a reading</h2>
@@ -183,7 +289,7 @@ function App() {
       </section>
 
       <section className="card">
-        <h2>Counts by Juz</h2>
+        <h2>Counts by Juz (you)</h2>
         {countsByJuz.length === 0 ? (
           <p className="muted">No logs yet.</p>
         ) : (
@@ -226,6 +332,45 @@ function App() {
           </div>
         )}
       </section>
+
+      {profile?.is_admin && (
+        <section className="card">
+          <h2>Admin dashboard — all users</h2>
+          {adminLogs.length === 0 ? (
+            <p className="muted">No logs yet.</p>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>When</th>
+                    <th>Full Name</th>
+                    <th>ITS</th>
+                    <th>Juz</th>
+                    <th>Surah</th>
+                    <th>Lat</th>
+                    <th>Lng</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {adminLogs.map((log) => (
+                    <tr key={log.id}>
+                      <td>{new Date(log.read_at).toLocaleString()}</td>
+                      <td>{log.full_name ?? '-'}</td>
+                      <td>{log.its ?? '-'}</td>
+                      <td>{log.juz_number}</td>
+                      <td>{log.surah_number ?? '-'}</td>
+                      <td>{log.lat ? Number(log.lat).toFixed(4) : '-'}</td>
+                      <td>{log.lng ? Number(log.lng).toFixed(4) : '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <small>To make a user admin: set profiles.is_admin = true in Supabase for that user.</small>
+        </section>
+      )}
     </main>
   )
 }
