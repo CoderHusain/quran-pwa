@@ -2,15 +2,44 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
 import './App.css'
 
+function EyeToggle({ shown, onToggle }) {
+  return (
+    <button type="button" className="eye-btn" onClick={onToggle} aria-label={shown ? 'Hide password' : 'Show password'}>
+      {shown ? '🙈' : '👁️'}
+    </button>
+  )
+}
+
+function PasswordField({ label, value, onChange, shown, onToggle, placeholder = '' }) {
+  return (
+    <>
+      <label>{label}</label>
+      <div className="password-wrap">
+        <input
+          value={value}
+          onChange={onChange}
+          type={shown ? 'text' : 'password'}
+          placeholder={placeholder}
+        />
+        <EyeToggle shown={shown} onToggle={onToggle} />
+      </div>
+    </>
+  )
+}
+
 function App() {
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
-  const [authView, setAuthView] = useState('signin')
+  const [authView, setAuthView] = useState('signin') // signin | signup | forgot | reset
 
   const [fullName, setFullName] = useState('')
   const [its, setIts] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
   const [loading, setLoading] = useState(false)
   const [authError, setAuthError] = useState('')
@@ -25,16 +54,32 @@ function App() {
   const [location, setLocation] = useState(null)
   const [status, setStatus] = useState('')
 
+  const [installPrompt, setInstallPrompt] = useState(null)
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    } = supabase.auth.onAuthStateChange((event, newSession) => {
       setSession(newSession)
+      if (event === 'PASSWORD_RECOVERY') {
+        setAuthView('reset')
+        setAuthInfo('Set your new password below.')
+        setAuthError('')
+      }
     })
 
     return () => subscription.unsubscribe()
+  }, [])
+
+  useEffect(() => {
+    const handler = (e) => {
+      e.preventDefault()
+      setInstallPrompt(e)
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
   }, [])
 
   useEffect(() => {
@@ -82,6 +127,7 @@ function App() {
       email: email.trim().toLowerCase(),
       password,
       options: {
+        emailRedirectTo: `${window.location.origin}`,
         data: {
           full_name: fullName.trim(),
           its: cleanIts,
@@ -98,6 +144,7 @@ function App() {
     setAuthInfo('A confirmation email has been sent to you. Please confirm your email, then sign in using ITS and password.')
     setAuthView('signin')
     setPassword('')
+    setConfirmPassword('')
   }
 
   async function signIn() {
@@ -149,6 +196,57 @@ function App() {
     }
 
     setLoading(false)
+  }
+
+  async function requestPasswordReset() {
+    setAuthError('')
+    setAuthInfo('')
+
+    if (!email.trim()) {
+      setAuthError('Please enter your email.')
+      return
+    }
+
+    setLoading(true)
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+      redirectTo: `${window.location.origin}`,
+    })
+    setLoading(false)
+
+    if (error) {
+      setAuthError(error.message)
+      return
+    }
+
+    setAuthInfo('Password reset link has been sent to your email. Open the link, then set a new password.')
+  }
+
+  async function resetPasswordNow() {
+    setAuthError('')
+    setAuthInfo('')
+
+    if (!password || !confirmPassword) {
+      setAuthError('Please enter new password and confirm it.')
+      return
+    }
+    if (password !== confirmPassword) {
+      setAuthError('Passwords do not match.')
+      return
+    }
+
+    setLoading(true)
+    const { error } = await supabase.auth.updateUser({ password })
+    setLoading(false)
+
+    if (error) {
+      setAuthError(error.message)
+      return
+    }
+
+    setAuthInfo('Password updated successfully. Please sign in now.')
+    setPassword('')
+    setConfirmPassword('')
+    setAuthView('signin')
   }
 
   async function signOut() {
@@ -232,6 +330,13 @@ function App() {
     if (profile?.is_admin) await loadAdminLogs()
   }
 
+  async function installApp() {
+    if (!installPrompt) return
+    await installPrompt.prompt()
+    await installPrompt.userChoice
+    setInstallPrompt(null)
+  }
+
   const countsByJuz = useMemo(() => {
     const map = new Map()
     for (const row of logs) {
@@ -242,77 +347,140 @@ function App() {
 
   if (!session) {
     return (
-      <main className="container">
-        <h1>Quran Read Tracker</h1>
+      <main className="container auth-shell">
+        <section className="card auth-card">
+          <h1>Quran Read Tracker</h1>
 
-        {authView === 'signin' ? (
-          <section className="card">
-            <h2>Sign in</h2>
-            <label>ITS</label>
-            <input value={its} onChange={(e) => setIts(e.target.value)} type="text" placeholder="Ex: 40239713" />
+          {authView === 'signin' && (
+            <>
+              <h2>Sign in</h2>
+              <label>ITS</label>
+              <input value={its} onChange={(e) => setIts(e.target.value)} type="text" placeholder="Ex: 40239713" />
 
-            <label>Password</label>
-            <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" />
+              <PasswordField
+                label="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                shown={showPassword}
+                onToggle={() => setShowPassword((v) => !v)}
+              />
 
-            <div className="row">
-              <button disabled={loading} onClick={signIn}>Sign In</button>
-            </div>
+              <div className="row">
+                <button disabled={loading} onClick={signIn}>Sign In</button>
+              </div>
 
-            {authError ? <p className="error-text">{authError}</p> : null}
-            {authInfo ? <p className="success-text">{authInfo}</p> : null}
+              <div className="row row-links">
+                <button className="link-btn" type="button" onClick={() => { setAuthView('signup'); setAuthError(''); setAuthInfo('') }}>
+                  Create account
+                </button>
+                <button className="link-btn" type="button" onClick={() => { setAuthView('forgot'); setAuthError(''); setAuthInfo('') }}>
+                  Forgot password?
+                </button>
+              </div>
+            </>
+          )}
 
-            <p className="muted auth-switch">
-              Don&apos;t have an account?{' '}
-              <button className="link-btn" type="button" onClick={() => { setAuthView('signup'); setAuthError(''); setAuthInfo('') }}>
-                Go to Sign up
-              </button>
-            </p>
-          </section>
-        ) : (
-          <section className="card">
-            <h2>Sign up</h2>
-            <label>Full Name</label>
-            <input value={fullName} onChange={(e) => setFullName(e.target.value)} type="text" />
+          {authView === 'signup' && (
+            <>
+              <h2>Sign up</h2>
+              <label>Full Name</label>
+              <input value={fullName} onChange={(e) => setFullName(e.target.value)} type="text" />
 
-            <label>ITS</label>
-            <input value={its} onChange={(e) => setIts(e.target.value)} type="text" placeholder="Ex: 40239713" />
+              <label>ITS</label>
+              <input value={its} onChange={(e) => setIts(e.target.value)} type="text" placeholder="Ex: 40239713" />
 
-            <label>Email</label>
-            <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="you@example.com" />
+              <label>Email</label>
+              <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="you@example.com" />
 
-            <label>Password</label>
-            <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" />
+              <PasswordField
+                label="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                shown={showPassword}
+                onToggle={() => setShowPassword((v) => !v)}
+              />
 
-            <div className="row">
-              <button disabled={loading} onClick={signUp}>Create account</button>
-            </div>
+              <div className="row">
+                <button disabled={loading} onClick={signUp}>Create account</button>
+              </div>
 
-            {authError ? <p className="error-text">{authError}</p> : null}
-            {authInfo ? <p className="success-text">{authInfo}</p> : null}
+              <div className="row row-links">
+                <button className="link-btn" type="button" onClick={() => { setAuthView('signin'); setAuthError(''); setAuthInfo('') }}>
+                  Back to Sign in
+                </button>
+              </div>
+            </>
+          )}
 
-            <p className="muted auth-switch">
-              Already have an account?{' '}
-              <button className="link-btn" type="button" onClick={() => { setAuthView('signin'); setAuthError(''); setAuthInfo('') }}>
-                Go to Sign in
-              </button>
-            </p>
-          </section>
-        )}
+          {authView === 'forgot' && (
+            <>
+              <h2>Forgot password</h2>
+              <label>Email</label>
+              <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="you@example.com" />
+
+              <div className="row">
+                <button disabled={loading} onClick={requestPasswordReset}>Send reset link</button>
+              </div>
+
+              <div className="row row-links">
+                <button className="link-btn" type="button" onClick={() => { setAuthView('signin'); setAuthError(''); setAuthInfo('') }}>
+                  Back to Sign in
+                </button>
+              </div>
+            </>
+          )}
+
+          {authView === 'reset' && (
+            <>
+              <h2>Reset password</h2>
+              <PasswordField
+                label="New password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                shown={showPassword}
+                onToggle={() => setShowPassword((v) => !v)}
+              />
+
+              <PasswordField
+                label="Confirm new password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                shown={showConfirmPassword}
+                onToggle={() => setShowConfirmPassword((v) => !v)}
+              />
+
+              <div className="row">
+                <button disabled={loading} onClick={resetPasswordNow}>Update password</button>
+              </div>
+            </>
+          )}
+
+          {authError ? <p className="error-text">{authError}</p> : null}
+          {authInfo ? <p className="success-text">{authInfo}</p> : null}
+        </section>
       </main>
     )
   }
 
   return (
-    <main className="container">
+    <main className="container app-shell">
       <div className="header-row">
         <h1>Quran Read Tracker</h1>
-        <button onClick={signOut} className="secondary">Sign out</button>
+        <div className="row">
+          {installPrompt ? <button onClick={installApp}>Install App</button> : null}
+          <button onClick={signOut} className="secondary">Sign out</button>
+        </div>
       </div>
       <p className="muted">
         Logged in as: <strong>{profile?.full_name || session.user.email}</strong>
         {profile?.its ? ` (ITS: ${profile.its})` : ''}
         {profile?.is_admin ? ' • Admin' : ''}
       </p>
+      {!installPrompt ? (
+        <small className="muted">
+          If Install button is not shown: on iPhone use Share → Add to Home Screen. On desktop/Android, browser may show install icon in address bar.
+        </small>
+      ) : null}
 
       <section className="card">
         <h2>Log a reading</h2>

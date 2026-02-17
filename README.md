@@ -24,24 +24,32 @@ Run `supabase-schema.sql` in Supabase SQL Editor.
 
 ## 3) Auth flow
 
-### Sign up page (separate UI page)
-Fields required:
+### Sign up page
+Fields:
 - Full Name
 - ITS
 - Email
 - Password
 
-After signup, user is redirected to Sign in page and shown:
-- "A confirmation email has been sent to you. Please confirm your email."
+After signup, user is moved to Sign in and shown:
+- "A confirmation email has been sent to you. Please confirm your email..."
 
 ### Sign in page
-Fields required:
-- ITS (placeholder: Ex: 40239713)
+Fields:
+- ITS (`Ex: 40239713`)
 - Password
 
-The app resolves ITS -> email internally and signs in using Supabase email/password auth.
-If credentials are invalid, error is shown in **red** below the form.
-If email is not confirmed, user is blocked from entering Juz and shown confirmation message.
+Invalid credential errors are shown in **red** below the form.
+
+### Forgot password
+On Sign in page, click **Forgot password?**
+- Enter email
+- User receives reset link to your app
+- On opening link, reset page appears
+- Enter new password + confirm password
+
+### Password visibility toggle
+All password fields include eye toggle (show/hide).
 
 ## 4) Run locally
 
@@ -62,16 +70,19 @@ Admin users can view all users' logs in-app.
 
 To make your account superadmin:
 
-1. Sign up and confirm email
-2. In Supabase SQL Editor run:
-
 ```sql
 update public.profiles
 set is_admin = true
 where its = 'YOUR_ITS_HERE';
 ```
 
-3. Sign in again → Admin dashboard appears
+Sign out and sign in again.
+
+## PWA install
+
+- Chrome/Edge/Android: app shows **Install App** button when install is available.
+- If not shown, check browser address bar for install icon.
+- iPhone (Safari): Share → **Add to Home Screen**.
 
 ## Deploy (Vercel)
 
