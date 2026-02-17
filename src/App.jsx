@@ -153,7 +153,7 @@ function App() {
       email: email.trim().toLowerCase(),
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}`,
+        emailRedirectTo: import.meta.env.VITE_APP_URL || window.location.origin,
         data: {
           full_name: fullName.trim(),
           its: cleanIts,
@@ -232,7 +232,7 @@ function App() {
 
     setLoading(true)
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-      redirectTo: `${window.location.origin}`,
+      redirectTo: import.meta.env.VITE_APP_URL || window.location.origin,
     })
     setLoading(false)
 

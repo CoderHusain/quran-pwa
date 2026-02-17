@@ -1,12 +1,21 @@
--- Run this in Supabase SQL editor
 
+-- =============================
+-- Quran Tracker: full migration
+-- =============================
+
+-- extensions
+create extension if not exists pgcrypto;
+
+-- -----------------------------
+-- tables
+-- -----------------------------
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text,
   its text unique,
   email text unique,
   is_admin boolean not null default false,
-  created_at timestamptz default now()
+  created_at timestamptz not null default now()
 );
 
 create table if not exists public.read_logs (
@@ -18,12 +27,56 @@ create table if not exists public.read_logs (
   lat double precision,
   lng double precision,
   location_accuracy_m double precision,
-  created_at timestamptz default now()
+  created_at timestamptz not null default now()
 );
 
+create index if not exists idx_read_logs_user_id on public.read_logs(user_id);
+create index if not exists idx_read_logs_read_at on public.read_logs(read_at desc);
+create index if not exists idx_profiles_its on public.profiles(lower(its));
+
+-- -----------------------------
+-- migrations: add missing columns
+-- -----------------------------
+do $$
+begin
+  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'email') then
+    alter table public.profiles add column email text unique;
+  end if;
+  
+  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'full_name') then
+    alter table public.profiles add column full_name text;
+  end if;
+  
+  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'its') then
+    alter table public.profiles add column its text unique;
+  end if;
+  
+  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'is_admin') then
+    alter table public.profiles add column is_admin boolean not null default false;
+  end if;
+end $$;
+
+-- backfill email from auth.users if needed
+update public.profiles p
+set email = lower(u.email)
+from auth.users u
+where p.id = u.id and p.email is null;
+
+-- backfill its and full_name from metadata if needed
+update public.profiles p
+set 
+  full_name = coalesce(p.full_name, u.raw_user_meta_data->>'full_name'),
+  its = coalesce(p.its, lower(u.raw_user_meta_data->>'its'))
+from auth.users u
+where p.id = u.id and (p.full_name is null or p.its is null);
+
+-- -----------------------------
+-- RLS
+-- -----------------------------
 alter table public.profiles enable row level security;
 alter table public.read_logs enable row level security;
 
+-- helper
 create or replace function public.is_admin(uid uuid)
 returns boolean
 language sql
@@ -32,50 +85,48 @@ security definer
 set search_path = public
 as $$
   select exists (
-    select 1 from public.profiles p where p.id = uid and p.is_admin = true
+    select 1
+    from public.profiles p
+    where p.id = uid and p.is_admin = true
   );
 $$;
 
--- ITS -> email lookup for sign-in flow (anonymous allowed)
-create or replace function public.get_email_by_its(p_its text)
-returns text
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select p.email
-  from public.profiles p
-  where lower(p.its) = lower(trim(p_its))
-  limit 1;
-$$;
+-- -----------------------------
+-- policies (drop/recreate safe)
+-- -----------------------------
+drop policy if exists profiles_select_own on public.profiles;
+drop policy if exists profiles_select_admin on public.profiles;
+drop policy if exists profiles_insert_own on public.profiles;
+drop policy if exists profiles_update_own on public.profiles;
 
-grant execute on function public.get_email_by_its(text) to anon, authenticated;
-
--- profile policies
-create policy if not exists profiles_select_own on public.profiles
+create policy profiles_select_own on public.profiles
 for select using (auth.uid() = id);
 
-create policy if not exists profiles_select_admin on public.profiles
+create policy profiles_select_admin on public.profiles
 for select using (public.is_admin(auth.uid()));
 
-create policy if not exists profiles_insert_own on public.profiles
+create policy profiles_insert_own on public.profiles
 for insert with check (auth.uid() = id);
 
-create policy if not exists profiles_update_own on public.profiles
+create policy profiles_update_own on public.profiles
 for update using (auth.uid() = id);
 
--- logs policies
-create policy if not exists read_logs_select_own on public.read_logs
+drop policy if exists read_logs_select_own on public.read_logs;
+drop policy if exists read_logs_select_admin on public.read_logs;
+drop policy if exists read_logs_insert_own on public.read_logs;
+
+create policy read_logs_select_own on public.read_logs
 for select using (auth.uid() = user_id);
 
-create policy if not exists read_logs_select_admin on public.read_logs
+create policy read_logs_select_admin on public.read_logs
 for select using (public.is_admin(auth.uid()));
 
-create policy if not exists read_logs_insert_own on public.read_logs
+create policy read_logs_insert_own on public.read_logs
 for insert with check (auth.uid() = user_id);
 
--- Create/update profile row after signup
+-- -----------------------------
+-- trigger: keep profile synced from auth.users
+-- -----------------------------
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -100,10 +151,32 @@ $$;
 
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute procedure public.handle_new_user();
+after insert on auth.users
+for each row execute procedure public.handle_new_user();
 
--- Admin dashboard RPC
+-- -----------------------------
+-- RPC: ITS -> email (for sign in)
+-- -----------------------------
+create or replace function public.get_email_by_its(p_its text)
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select p.email
+  from public.profiles p
+  where lower(p.its) = lower(trim(p_its))
+  limit 1;
+$$;
+
+grant execute on function public.get_email_by_its(text) to anon, authenticated;
+
+-- -----------------------------
+-- RPC: admin dashboard logs
+-- -----------------------------
+drop function if exists public.get_all_read_logs_admin();
+
 create or replace function public.get_all_read_logs_admin()
 returns table (
   id uuid,
@@ -143,3 +216,17 @@ as $$
 $$;
 
 grant execute on function public.get_all_read_logs_admin() to authenticated;
+
+-- -----------------------------
+-- backfill: create profiles for existing users
+-- -----------------------------
+insert into public.profiles (id, full_name, its, email)
+select 
+  u.id,
+  u.raw_user_meta_data->>'full_name',
+  lower(u.raw_user_meta_data->>'its'),
+  lower(u.email)
+from auth.users u
+left join public.profiles p on u.id = p.id
+where p.id is null
+on conflict (id) do nothing;
